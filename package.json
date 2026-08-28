@@ -1,0 +1,11 @@
+{
+  "name": "pi-zai-quota",
+  "version": "1.0.0",
+  "description": "pi extension that shows Z.ai coding-plan quotas (5h + weekly) in the bottom-right of the TUI footer",
+  "keywords": ["pi-package"],
+  "license": "MIT",
+  "type": "module",
+  "pi": {
+    "extensions": ["./zai-quota.ts"]
+  }
+}
