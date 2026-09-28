@@ -7,6 +7,17 @@ import { createJiti } from "jiti";
 
 const jiti = createJiti(import.meta.url);
 const quota = await jiti.import(new URL("../quota-providers.ts", import.meta.url).pathname);
+const zai = await jiti.import(new URL("../providers/zai.ts", import.meta.url).pathname);
+const codex = await jiti.import(new URL("../providers/openai-codex.ts", import.meta.url).pathname);
+const copilot = await jiti.import(new URL("../providers/github-copilot.ts", import.meta.url).pathname);
+
+test("provider registry contains one adapter per supported provider", () => {
+	assert.deepEqual(quota.quotaProviders.map((provider) => provider.providerId), [
+		"zai",
+		"openai-codex",
+		"github-copilot",
+	]);
+});
 
 function makeJwt(payload) {
 	return `header.${Buffer.from(JSON.stringify(payload)).toString("base64url")}.signature`;
@@ -36,7 +47,7 @@ function context(provider, options = {}) {
 }
 
 test("Z.ai response parses into normalized quota samples", () => {
-	const snapshot = quota.parseZaiLimits([
+	const snapshot = zai.parseZaiLimits([
 		{ unit: 3, number: 5, usage: 2000, currentValue: 400, percentage: 20, nextResetTime: 1_800_000 },
 		{ unit: 6, number: 1, usage: 10000, currentValue: 2000, percentage: 20 },
 	], "pro", 1_000_000);
@@ -45,7 +56,7 @@ test("Z.ai response parses into normalized quota samples", () => {
 });
 
 test("Codex parser labels windows by reported duration and converts reset time", () => {
-	const snapshot = quota.parseCodexUsage({
+	const snapshot = codex.parseCodexUsage({
 		plan_type: "plus",
 		rate_limit: {
 			primary_window: { used_percent: 33.4, limit_window_seconds: 18000, reset_at: 2000 },
@@ -61,14 +72,14 @@ test("Codex parser labels windows by reported duration and converts reset time",
 });
 
 test("Codex parser supports window variants and rejects empty quota responses", () => {
-	const snapshot = quota.parseCodexUsage({ rateLimit: { primaryWindow: { usedPercent: 77, windowDurationMins: 60 } } });
+	const snapshot = codex.parseCodexUsage({ rateLimit: { primaryWindow: { usedPercent: 77, windowDurationMins: 60 } } });
 	assert.equal(snapshot.samples[0].label, "1h");
-	assert.throws(() => quota.parseCodexUsage({ rate_limit: {} }), /no quota windows/i);
+	assert.throws(() => codex.parseCodexUsage({ rate_limit: {} }), /no quota windows/i);
 });
 
 test("GitHub Copilot quota parser shows only AI usage and ignores other quota snapshots", () => {
 	const reset = "2026-05-01T00:00:00.000Z";
-	const snapshot = quota.parseCopilotUsage({
+	const snapshot = copilot.parseCopilotUsage({
 		copilot_plan: "individual_pro",
 		quota_reset_date_utc: reset,
 		quota_snapshots: {
@@ -84,7 +95,7 @@ test("GitHub Copilot quota parser shows only AI usage and ignores other quota sn
 	})), [
 		{ label: "1mo", percent: 72, used: 216, total: 300, resetMs: Date.parse(reset), unlimited: false },
 	]);
-	assert.throws(() => quota.parseCopilotUsage({ quota_snapshots: { chat: { unlimited: true } } }), /no premium interactions quota/i);
+	assert.throws(() => copilot.parseCopilotUsage({ quota_snapshots: { chat: { unlimited: true } } }), /no premium interactions quota/i);
 });
 
 test("GitHub Copilot adapter tries the undocumented endpoint with active-provider auth", async (t) => {
@@ -127,8 +138,8 @@ test("Copilot adapter uses the stored original OAuth token for its undocumented 
 
 test("ChatGPT account id is extracted from Codex OAuth JWT", () => {
 	const token = makeJwt({ "https://api.openai.com/auth": { chatgpt_account_id: " acct-123 " } });
-	assert.equal(quota.extractChatGptAccountId(token), "acct-123");
-	assert.equal(quota.extractChatGptAccountId("not-a-jwt"), undefined);
+	assert.equal(codex.extractChatGptAccountId(token), "acct-123");
+	assert.equal(codex.extractChatGptAccountId("not-a-jwt"), undefined);
 });
 
 test("Codex adapter calls ChatGPT usage endpoint with account header only for OAuth", async (t) => {

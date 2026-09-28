@@ -30,6 +30,10 @@ pi install /path/to/pi-quota
 
 Then restart pi or run `/reload`.
 
+## Provider adapter structure
+
+Shared results and the `QuotaProvider` contract live in `quota-types.ts`; common HTTP/auth/normalization helpers are in `quota-utils.ts`. Each provider implements the contract in its own `providers/<provider>.ts` module, and `quota-providers.ts` selects the adapter by the active model provider. To add a provider, implement `QuotaProvider` and register it there.
+
 ## API notes
 
 - Z.ai calls `GET https://api.z.ai/api/monitor/usage/quota/limit` using the active provider's credential (or the Z.ai environment fallback).

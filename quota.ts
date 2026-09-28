@@ -13,7 +13,8 @@
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { FooterComponent } from "@earendil-works/pi-coding-agent";
 import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
-import { fetchCurrentQuota, type QuotaSample, type QuotaSnapshot } from "./quota-providers.ts";
+import { fetchCurrentQuota } from "./quota-providers.ts";
+import type { QuotaSample, QuotaSnapshot } from "./quota-types.ts";
 
 const CACHE_TTL_MS = 60_000;
 const MIN_REFRESH_MS = 30_000;
