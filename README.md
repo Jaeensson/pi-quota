@@ -1,97 +1,45 @@
-# pi-zai-quota
+# pi-quota
 
-A small [pi](https://pi.dev) coding-agent extension that shows your **Z.ai coding-plan quotas** —
-the 5-hour rolling window and the weekly window — as a compact element in the **bottom-right
-corner of the TUI footer**:
+A [pi](https://pi.dev) extension that displays quota for the **currently selected model provider** in the bottom-right of the TUI footer. Provider-specific APIs are normalized into a shared display; if the active provider has no matching quota adapter or credential, the extension renders nothing.
 
-```
-z.ai 5h 9% · 1w 1%
-```
+## Supported providers
 
-The percentages are color-coded once usage gets high (warning at ≥70%, error at ≥90%),
-and each window shows a dim short reset countdown — `(37m)` under an hour, `(4h)` or
-`(6d 22h)` above it.
-All built-in footer information (cwd, token stats, context usage, model) is preserved.
+| Provider | What is shown | Auth requirement | API status |
+| --- | --- | --- | --- |
+| Z.ai (`zai`) | Coding-plan quota windows | Pi provider auth, or `$ZAI_API_KEY` / `$Z_AI_API_KEY` | Unofficial usage endpoint |
+| OpenAI Codex (`openai-codex`) | Rate-limit windows and reset countdowns | Pi ChatGPT OAuth / subscription auth | Private ChatGPT backend endpoint |
 
-## Features
+Codex usage is only shown for `openai-codex` OAuth/subscription auth. An OpenAI API key uses a different billing system and is not represented as a Codex subscription quota. Codex window labels come from their reported durations, not assumed primary/secondary positions.
 
-- Reads the Z.ai API key already configured in pi (provider `zai`, via `/login` or `auth.json`).
-  `$ZAI_API_KEY` is honored as a fallback.
-- **Renders nothing when no API key is available** (or when the key is rejected with 401).
-- Wraps pi's built-in footer component, so the default footer keeps working — the quota is
-  appended right-aligned on the footer's last line (or as its own right-aligned line if
-  there is no room, e.g. when no extension status line exists).
-- Refresh policy: on session start, after each agent turn (throttled to at most once per 30s),
-  and every 5 minutes while idle. Responses are cached for 60s.
-- `/zai-quota` command for a detailed view (credits used / limit, reset countdown, plan level).
+## Display and commands
+
+- Footer example: `Codex 5h 16% (3h) · 1w 3% (6d 22h)`.
+- Percentages are usage percentages, colored warning at ≥70% and error at ≥90%; reset countdowns are dim.
+- The built-in footer is preserved; quota text is right-aligned on its last line, or given its own line if needed.
+- Refreshes on session start, provider/model switch, after each turn (throttled), and every 5 minutes while quota data is available. Responses are cached for 60 seconds.
+- `/quota` shows detailed usage for the active provider. `/zai-quota` remains as an alias for existing users.
 
 ## Installation
 
-From this directory (global install into `~/.pi/agent`):
-
 ```sh
-pi install /path/to/pi-zai-quota
-```
-
-or from git:
-
-```sh
-pi install git:github.com/<you>/pi-zai-quota
+pi install /path/to/pi-quota
 ```
 
 Then restart pi or run `/reload`.
 
-## How it works
+## API notes
 
-The Z.ai quota API is not officially documented. This extension calls:
+- Z.ai calls `GET https://api.z.ai/api/monitor/usage/quota/limit` using the active provider's credential (or the Z.ai environment fallback).
+- Codex calls `GET https://chatgpt.com/backend-api/wham/usage` with the OAuth bearer token and `ChatGPT-Account-Id` extracted from the token claims. This is a private backend endpoint, not a documented OpenAI API.
 
-```
-GET https://api.z.ai/api/monitor/usage/quota/limit
-Authorization: Bearer <api key>
-```
+No provider credential is stored by this extension. It asks pi's model registry for the active provider's auth.
 
-Example response:
+## Development and tests
 
-```json
-{
-  "code": 200,
-  "msg": "Operation successful",
-  "data": {
-    "limits": [
-      { "type": "CREDIT_LIMIT", "unit": 3, "number": 5, "usage": 2000,  "currentValue": 194, "remaining": 1805, "percentage": 9, "nextResetTime": 1787937355569 },
-      { "type": "CREDIT_LIMIT", "unit": 6, "number": 1, "usage": 10000, "currentValue": 194, "remaining": 9805, "percentage": 1, "nextResetTime": 1788523947998 }
-    ],
-    "level": "lite"
-  },
-  "success": true
-}
-```
-
-`unit: 3` = hours, `unit: 6` = weeks — i.e. the first entry is the 5-hour window, the second
-the weekly window. `usage` is the credit limit, `currentValue` what you used, `percentage`
-the usage percentage.
-
-## Notes
-
-- The footer is only replaced in TUI mode; print/JSON/RPC modes are untouched.
-- If another extension also installs a custom footer (e.g. a powerline), the last one wins —
-  this extension then stays invisible rather than fighting over the footer.
-- If you switch themes via `/theme`, the quota line's colors refresh on the next `/reload`.
-
-## Development
-
-`test/render-test.mjs` drives the extension with a mocked `pi`/`ctx`, hits the real quota API
-and renders the footer. It needs `jiti` resolvable and expects a Z.ai key in
-`~/.pi/agent/auth.json` (provider `zai`); symlink pi's packages first:
+The provider parser/request tests use mocked responses and do not call provider APIs:
 
 ```sh
-pi_pkg=$(dirname $(readlink -f $(which pi)))/../lib/node_modules/pi-monorepo  # adjust to your install
-mkdir -p node_modules/@earendil-works
-ln -sfn "$pi_pkg" node_modules/@earendil-works/pi-coding-agent
-ln -sfn "$pi_pkg/node_modules/@earendil-works/pi-tui" node_modules/@earendil-works/pi-tui
-ln -sfn "$pi_pkg/node_modules/jiti" node_modules/jiti
-node test/render-test.mjs 110            # normal render
-TEST_KEY=none node test/render-test.mjs  # no key -> must render nothing
-TEST_KEY=bad  node test/render-test.mjs  # rejected key -> must render nothing
-TEST_STATUS=1 node test/render-test.mjs  # quota right-aligned on an existing status line
+node --test test/provider-test.mjs
 ```
+
+For a local test setup, make pi's runtime packages and `jiti` resolvable under `node_modules/@earendil-works` and `node_modules/jiti` as symlinks to your pi installation. No live API key is needed for the unit tests.
