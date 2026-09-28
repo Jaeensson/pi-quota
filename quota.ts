@@ -60,19 +60,22 @@ function quotaText(snapshot: QuotaSnapshot | undefined, theme: any): string | un
 	return prefix + snapshot.samples.map((sample) => formatSample(sample, theme)).join(theme.fg("dim", " · "));
 }
 
-function appendRight(lines: string[], text: string, width: number): void {
+function placeQuotaAboveModel(lines: string[], text: string, width: number): void {
 	const textWidth = visibleWidth(text);
-	const rightAligned = " ".repeat(Math.max(0, width - textWidth)) + text;
+	const rightAligned = truncateToWidth(" ".repeat(Math.max(0, width - textWidth)) + text, width);
 	if (lines.length === 0) {
-		lines.push(truncateToWidth(rightAligned, width));
+		lines.push(rightAligned);
 		return;
 	}
-	const last = lines[lines.length - 1];
-	const free = width - visibleWidth(last) - textWidth;
+
+	// Use the otherwise empty right side of the top footer row where possible.
+	const topLine = lines[0];
+	const free = width - visibleWidth(topLine) - textWidth;
 	if (free >= 2) {
-		lines[lines.length - 1] = last + " ".repeat(free) + text;
+		lines[0] = topLine + " ".repeat(free) + text;
 	} else {
-		lines.push(truncateToWidth(rightAligned, width));
+		// Keep quota above the model/thinking-level row when the cwd is too long.
+		lines.splice(1, 0, rightAligned);
 	}
 }
 
@@ -113,7 +116,7 @@ export default function (pi: ExtensionAPI) {
 				render(width: number): string[] {
 					const lines = [...builtIn.render(width)];
 					const text = quotaText(snapshot, ctx.ui.theme);
-					if (text) appendRight(lines, text, width);
+					if (text) placeQuotaAboveModel(lines, text, width);
 					return lines;
 				},
 			};

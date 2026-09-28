@@ -67,10 +67,13 @@ try {
 		getAvailableProviderCount: () => 1,
 		onBranchChange: () => () => {},
 	});
-	const lines = footer.render(120).join("\n");
+	const renderedLines = footer.render(120);
+	const lines = renderedLines.join("\n");
 	assert.match(lines, /Codex/);
 	assert.match(lines, /5h 16%/);
 	assert.match(lines, /1w 3%/);
+	assert.match(renderedLines[0], /Codex/, "quota should use the top footer row");
+	assert.match(renderedLines[1], /codex-test.*high/, "quota should appear above model and effort labels");
 
 	// Pi clears extension footers on session rebind; the extension must restore
 	// its cached snapshot without needing to wait for a network refresh.
