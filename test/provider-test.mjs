@@ -1,5 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { createJiti } from "jiti";
 
 const jiti = createJiti(import.meta.url);
@@ -7,6 +10,18 @@ const quota = await jiti.import(new URL("../quota-providers.ts", import.meta.url
 
 function makeJwt(payload) {
 	return `header.${Buffer.from(JSON.stringify(payload)).toString("base64url")}.signature`;
+}
+
+function isolateAgentDir(t) {
+	const agentDir = mkdtempSync(join(tmpdir(), "pi-quota-test-"));
+	const previous = process.env.PI_CODING_AGENT_DIR;
+	process.env.PI_CODING_AGENT_DIR = agentDir;
+	t.after(() => {
+		if (previous === undefined) delete process.env.PI_CODING_AGENT_DIR;
+		else process.env.PI_CODING_AGENT_DIR = previous;
+		rmSync(agentDir, { recursive: true, force: true });
+	});
+	return agentDir;
 }
 
 function context(provider, options = {}) {
@@ -49,6 +64,67 @@ test("Codex parser supports window variants and rejects empty quota responses", 
 	const snapshot = quota.parseCodexUsage({ rateLimit: { primaryWindow: { usedPercent: 77, windowDurationMins: 60 } } });
 	assert.equal(snapshot.samples[0].label, "1h");
 	assert.throws(() => quota.parseCodexUsage({ rate_limit: {} }), /no quota windows/i);
+});
+
+test("GitHub Copilot quota parser handles remaining, percent, and unlimited snapshots", () => {
+	const reset = "2026-05-01T00:00:00.000Z";
+	const snapshot = quota.parseCopilotUsage({
+		copilot_plan: "individual_pro",
+		quota_reset_date_utc: reset,
+		quota_snapshots: {
+			premium_interactions: { entitlement: 300, remaining: 84, percent_remaining: 28, unlimited: false },
+			chat: { entitlement: 200, remaining: 160 },
+			completions: { unlimited: true },
+		},
+	}, 1234);
+	assert.equal(snapshot.provider, "GitHub Copilot");
+	assert.equal(snapshot.level, "individual_pro");
+	assert.deepEqual(snapshot.samples.map(({ label, percent, used, total, resetMs, unlimited }) => ({
+		label, percent, used, total, resetMs, unlimited,
+	})), [
+		{ label: "Premium Interactions", percent: 72, used: 216, total: 300, resetMs: Date.parse(reset), unlimited: false },
+		{ label: "Chat", percent: 20, used: 40, total: 200, resetMs: Date.parse(reset), unlimited: false },
+		{ label: "Completions", percent: 0, used: 0, total: 0, resetMs: Date.parse(reset), unlimited: true },
+	]);
+	assert.throws(() => quota.parseCopilotUsage({ quota_snapshots: {} }), /no supported quota/i);
+});
+
+test("GitHub Copilot adapter tries the undocumented endpoint with active-provider auth", async (t) => {
+	isolateAgentDir(t);
+	let requested;
+	const originalFetch = globalThis.fetch;
+	globalThis.fetch = async (url, init) => {
+		requested = { url, init };
+		return new Response(JSON.stringify({
+			quota_snapshots: { premium_interactions: { entitlement: 300, remaining: 270 } },
+		}), { status: 200 });
+	};
+	t.after(() => { globalThis.fetch = originalFetch; });
+
+	const snapshot = await quota.fetchCurrentQuota(context("github-copilot", { token: "active-copilot-token" }));
+	assert.equal(snapshot.samples[0].percent, 10);
+	assert.equal(requested.url, "https://api.github.com/copilot_internal/user");
+	assert.equal(requested.init.headers.Authorization, "Bearer active-copilot-token");
+	assert.equal(await quota.fetchCurrentQuota(context("github-copilot")), undefined);
+});
+
+test("Copilot adapter uses the stored original OAuth token for its undocumented endpoint", async (t) => {
+	const agentDir = isolateAgentDir(t);
+	writeFileSync(join(agentDir, "auth.json"), JSON.stringify({
+		"github-copilot": { type: "oauth", refresh: "raw-github-oauth-token", access: "copilot-session-token" },
+	}));
+	const originalFetch = globalThis.fetch;
+	let authorization;
+	globalThis.fetch = async (_url, init) => {
+		authorization = init.headers.Authorization;
+		return new Response(JSON.stringify({
+			quota_snapshots: { premium_interactions: { entitlement: 300, remaining: 240 } },
+		}), { status: 200 });
+	};
+	t.after(() => { globalThis.fetch = originalFetch; });
+
+	await quota.fetchCurrentQuota(context("github-copilot", { token: "copilot-session-token" }));
+	assert.equal(authorization, "Bearer raw-github-oauth-token");
 });
 
 test("ChatGPT account id is extracted from Codex OAuth JWT", () => {

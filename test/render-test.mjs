@@ -72,6 +72,12 @@ try {
 	assert.match(lines, /5h 16%/);
 	assert.match(lines, /1w 3%/);
 
+	// Pi clears extension footers on session rebind; the extension must restore
+	// its cached snapshot without needing to wait for a network refresh.
+	footerFactory = undefined;
+	await handlers.get("session_start")({ reason: "resume" }, mockCtx);
+	assert.ok(footerFactory, "session rebind should restore the cached quota footer");
+
 	await commands.get("quota").handler("", mockCtx);
 	assert.equal(mockCtx.lastNotification.type, "info");
 	assert.match(mockCtx.lastNotification.message, /plan: plus/);

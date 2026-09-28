@@ -192,7 +192,13 @@ export default function (pi: ExtensionAPI) {
 		})();
 	}
 
-	pi.on("session_start", (_event, ctx) => activate(ctx));
+	pi.on("session_start", (_event, ctx) => {
+		// Pi clears extension footers when sessions are rebound; reinstall a
+		// cached active-provider snapshot before attempting its refresh.
+		footerSet = false;
+		activate(ctx);
+		if (snapshot && ctx.model?.provider === activeProvider) updateFooter(ctx);
+	});
 	pi.on("model_select", (_event, ctx) => activate(ctx));
 	pi.on("turn_end", (_event, ctx) => void refresh(ctx, true));
 	pi.on("session_shutdown", () => stopIdleTimer());

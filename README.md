@@ -8,12 +8,15 @@ A [pi](https://pi.dev) extension that displays quota for the **currently selecte
 | --- | --- | --- | --- |
 | Z.ai (`zai`) | Coding-plan quota windows | Pi provider auth, or `$ZAI_API_KEY` / `$Z_AI_API_KEY` | Unofficial usage endpoint |
 | OpenAI Codex (`openai-codex`) | Rate-limit windows and reset countdowns | Pi ChatGPT OAuth / subscription auth | Private ChatGPT backend endpoint |
+| GitHub Copilot (`github-copilot`) | Premium interactions and any returned chat/completion quotas | Pi GitHub Copilot auth | Undocumented endpoint; best effort |
 
 Codex usage is only shown for `openai-codex` OAuth/subscription auth. An OpenAI API key uses a different billing system and is not represented as a Codex subscription quota. Codex window labels come from their reported durations, not assumed primary/secondary positions.
 
+The GitHub Copilot adapter uses `GET https://api.github.com/copilot_internal/user`. This endpoint is undocumented and may change. Pi's resolved Copilot API token is not accepted by this endpoint, so the adapter reads the original GitHub OAuth token from the active Pi `auth.json` entry (using Pi's configured agent directory) and sends it only to GitHub's API host. It is never logged or persisted by this extension. The adapter is best effort and retains the last successful display if a later refresh fails.
+
 ## Display and commands
 
-- Footer example: `Codex 5h 16% (3h) · 1w 3% (6d 22h)`.
+- Footer examples: `Codex 5h 16% (3h) · 1w 3% (6d 22h)` and `GitHub Copilot Premium Interactions 54% (12d)`.
 - Percentages are usage percentages, colored warning at ≥70% and error at ≥90%; reset countdowns are dim.
 - The built-in footer is preserved; quota text is right-aligned on its last line, or given its own line if needed.
 - Refreshes on session start, provider/model switch, after each turn (throttled), and every 5 minutes while quota data is available. Responses are cached for 60 seconds.
@@ -31,8 +34,9 @@ Then restart pi or run `/reload`.
 
 - Z.ai calls `GET https://api.z.ai/api/monitor/usage/quota/limit` using the active provider's credential (or the Z.ai environment fallback).
 - Codex calls `GET https://chatgpt.com/backend-api/wham/usage` with the OAuth bearer token and `ChatGPT-Account-Id` extracted from the token claims. This is a private backend endpoint, not a documented OpenAI API.
+- GitHub Copilot calls `GET https://api.github.com/copilot_internal/user` with the original OAuth token from Pi's active `github-copilot` auth entry. The response's `quota_snapshots` is parsed defensively; currently recognized entries are `premium_interactions`, `chat`, and `completions`.
 
-No provider credential is stored by this extension. It asks pi's model registry for the active provider's auth.
+No provider credential is copied or persisted by this extension. It asks Pi's model registry for active-provider auth and, for the GitHub Copilot endpoint only, reads the existing OAuth token from the auth file Pi uses for the active agent directory.
 
 ## Development and tests
 
