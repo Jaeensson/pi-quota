@@ -257,7 +257,7 @@ export function parseCopilotUsage(payload: unknown, now = Date.now()): QuotaSnap
 	const quotas = asRecord(root?.quota_snapshots);
 	if (!quotas) throw new Error("Unexpected GitHub Copilot quota response: missing quota_snapshots");
 	const commonReset = timestampMs(root?.quota_reset_date_utc ?? root?.quota_reset_date ?? root?.quota_reset_at);
-	const premiumInteractions = parseCopilotQuota("AI", quotas[COPILOT_QUOTA_KEY], commonReset);
+	const premiumInteractions = parseCopilotQuota("1mo", quotas[COPILOT_QUOTA_KEY], commonReset);
 	if (!premiumInteractions) throw new Error("GitHub Copilot response contained no premium interactions quota snapshot");
 	const samples = [premiumInteractions];
 	return {
