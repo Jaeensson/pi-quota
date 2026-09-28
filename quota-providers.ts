@@ -222,7 +222,7 @@ async function fetchCodex(ctx: ProviderContext): Promise<QuotaSnapshot | undefin
 // GitHub Copilot adapter (undocumented endpoint; best effort)
 // ---------------------------------------------------------------------------
 
-const COPILOT_QUOTA_KEYS = ["premium_interactions", "chat", "completions"] as const;
+const COPILOT_QUOTA_KEY = "premium_interactions";
 
 function quotaTitle(key: string): string {
 	return key.split(/[_-]+/).map((part) => part.charAt(0).toUpperCase() + part.slice(1)).join(" ");
@@ -257,10 +257,9 @@ export function parseCopilotUsage(payload: unknown, now = Date.now()): QuotaSnap
 	const quotas = asRecord(root?.quota_snapshots);
 	if (!quotas) throw new Error("Unexpected GitHub Copilot quota response: missing quota_snapshots");
 	const commonReset = timestampMs(root?.quota_reset_date_utc ?? root?.quota_reset_date ?? root?.quota_reset_at);
-	const samples = COPILOT_QUOTA_KEYS
-		.map((key) => parseCopilotQuota(key, quotas[key], commonReset))
-		.filter((sample): sample is QuotaSample => sample !== undefined);
-	if (samples.length === 0) throw new Error("GitHub Copilot response contained no supported quota snapshots");
+	const premiumInteractions = parseCopilotQuota("AI", quotas[COPILOT_QUOTA_KEY], commonReset);
+	if (!premiumInteractions) throw new Error("GitHub Copilot response contained no premium interactions quota snapshot");
+	const samples = [premiumInteractions];
 	return {
 		fetchedAt: now,
 		provider: "GitHub Copilot",

@@ -66,7 +66,7 @@ test("Codex parser supports window variants and rejects empty quota responses", 
 	assert.throws(() => quota.parseCodexUsage({ rate_limit: {} }), /no quota windows/i);
 });
 
-test("GitHub Copilot quota parser handles remaining, percent, and unlimited snapshots", () => {
+test("GitHub Copilot quota parser shows only AI usage and ignores other quota snapshots", () => {
 	const reset = "2026-05-01T00:00:00.000Z";
 	const snapshot = quota.parseCopilotUsage({
 		copilot_plan: "individual_pro",
@@ -82,11 +82,9 @@ test("GitHub Copilot quota parser handles remaining, percent, and unlimited snap
 	assert.deepEqual(snapshot.samples.map(({ label, percent, used, total, resetMs, unlimited }) => ({
 		label, percent, used, total, resetMs, unlimited,
 	})), [
-		{ label: "Premium Interactions", percent: 72, used: 216, total: 300, resetMs: Date.parse(reset), unlimited: false },
-		{ label: "Chat", percent: 20, used: 40, total: 200, resetMs: Date.parse(reset), unlimited: false },
-		{ label: "Completions", percent: 0, used: 0, total: 0, resetMs: Date.parse(reset), unlimited: true },
+		{ label: "AI", percent: 72, used: 216, total: 300, resetMs: Date.parse(reset), unlimited: false },
 	]);
-	assert.throws(() => quota.parseCopilotUsage({ quota_snapshots: {} }), /no supported quota/i);
+	assert.throws(() => quota.parseCopilotUsage({ quota_snapshots: { chat: { unlimited: true } } }), /no premium interactions quota/i);
 });
 
 test("GitHub Copilot adapter tries the undocumented endpoint with active-provider auth", async (t) => {
