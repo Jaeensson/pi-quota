@@ -10,12 +10,14 @@ const quota = await jiti.import(new URL("../quota-providers.ts", import.meta.url
 const zai = await jiti.import(new URL("../providers/zai.ts", import.meta.url).pathname);
 const codex = await jiti.import(new URL("../providers/openai-codex.ts", import.meta.url).pathname);
 const copilot = await jiti.import(new URL("../providers/github-copilot.ts", import.meta.url).pathname);
+const opencodeGo = await jiti.import(new URL("../providers/opencode-go.ts", import.meta.url).pathname);
 
 test("provider registry contains one adapter per supported provider", () => {
 	assert.deepEqual(quota.quotaProviders.map((provider) => provider.providerId), [
 		"zai",
 		"openai-codex",
 		"github-copilot",
+		"opencode-go",
 	]);
 });
 
@@ -134,6 +136,43 @@ test("Copilot adapter uses the stored original OAuth token for its undocumented 
 
 	await quota.fetchCurrentQuota(context("github-copilot", { token: "copilot-session-token" }));
 	assert.equal(authorization, "Bearer raw-github-oauth-token");
+});
+
+test("OpenCode Go response parses the rolling/weekly/monthly windows", () => {
+	const snapshot = opencodeGo.parseOpenCodeUsage({
+		usage: {
+			rolling: { status: "ok", percent: 40, resetsAt: "2026-05-01T12:00:00.000Z" },
+			weekly: { status: "ok", percent: 78 },
+			monthly: { status: "ok", percent: 82, resetsAt: "2026-06-01T00:00:00.000Z" },
+		},
+	}, 1234);
+	assert.equal(snapshot.provider, "OpenCode Go");
+	assert.deepEqual(snapshot.samples.map(({ label, percent, used, total, resetMs }) => ({ label, percent, used, total, resetMs })), [
+		{ label: "5h", percent: 40, used: 40, total: 100, resetMs: Date.parse("2026-05-01T12:00:00.000Z") },
+		{ label: "1w", percent: 78, used: 78, total: 100, resetMs: undefined },
+		{ label: "1mo", percent: 82, used: 82, total: 100, resetMs: Date.parse("2026-06-01T00:00:00.000Z") },
+	]);
+	assert.throws(() => opencodeGo.parseOpenCodeUsage({}), /missing usage/i);
+	assert.throws(() => opencodeGo.parseOpenCodeUsage({ usage: {} }), /no usage windows/i);
+});
+
+test("OpenCode Go adapter calls the workspace usage endpoint with active-provider auth", async (t) => {
+	let requested;
+	const originalFetch = globalThis.fetch;
+	globalThis.fetch = async (url, init) => {
+		requested = { url, init };
+		return new Response(JSON.stringify({
+			usage: { rolling: { percent: 12, resetsAt: "2026-05-01T12:00:00.000Z" } },
+		}), { status: 200 });
+	};
+	t.after(() => { globalThis.fetch = originalFetch; });
+
+	const snapshot = await quota.fetchCurrentQuota(context("opencode-go", { token: "go-workspace-key" }));
+	assert.equal(snapshot.provider, "OpenCode Go");
+	assert.equal(snapshot.samples[0].percent, 12);
+	assert.equal(requested.url, "https://opencode.ai/zen/go/v1/usage");
+	assert.equal(requested.init.headers.Authorization, "Bearer go-workspace-key");
+	assert.equal(await quota.fetchCurrentQuota(context("opencode-go")), undefined);
 });
 
 test("ChatGPT account id is extracted from Codex OAuth JWT", () => {

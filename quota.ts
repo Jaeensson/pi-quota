@@ -5,6 +5,7 @@
  * - Z.ai: coding-plan quota endpoint (provider `zai`)
  * - OpenAI Codex: ChatGPT subscription usage endpoint (provider `openai-codex` + OAuth)
  * - GitHub Copilot: undocumented quota endpoint (provider `github-copilot`, best effort)
+ * - OpenCode Go: unofficial workspace usage endpoint (provider `opencode-go`, best effort)
  *
  * Each adapter normalizes its response into shared quota samples. No matching
  * provider credential means no quota is fetched or rendered.

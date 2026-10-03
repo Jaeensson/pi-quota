@@ -2,6 +2,7 @@ import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import type { QuotaProvider, QuotaSnapshot } from "./quota-types.ts";
 import { githubCopilotQuotaProvider } from "./providers/github-copilot.ts";
 import { openAICodexQuotaProvider } from "./providers/openai-codex.ts";
+import { openCodeGoQuotaProvider } from "./providers/opencode-go.ts";
 import { zaiQuotaProvider } from "./providers/zai.ts";
 
 /** Provider registry; adapters each implement the shared QuotaProvider contract. */
@@ -9,6 +10,7 @@ export const quotaProviders: readonly QuotaProvider[] = [
 	zaiQuotaProvider,
 	openAICodexQuotaProvider,
 	githubCopilotQuotaProvider,
+	openCodeGoQuotaProvider,
 ];
 
 const providersById = new Map(quotaProviders.map((provider) => [provider.providerId, provider]));
